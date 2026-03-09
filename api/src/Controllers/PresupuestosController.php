@@ -17,51 +17,53 @@ class PresupuestosController {
         $db = (new Database())->getConnection();
         
         try {
-            // Consultamos la vista comparativa y unimos con CategoriasGasto para obtener el ID faltante
-            // Aliaseamos las columnas para que coincidan con lo que espera el frontend (MontoPresupuestado y MontoReal)
-            $query = "SELECT v.UsuarioId, v.Anio, v.Mes, v.Seccion, v.Categoria, 
-                             v.Presupuestado AS MontoPresupuestado, 
-                             v.Real_Gastado AS MontoReal, 
-                             cat.CategoriaGastoId 
-                      FROM Vista_ComparativoPresupuesto v
-                      JOIN CategoriasGasto cat ON v.Categoria = cat.Nombre
-                      JOIN CategoriasGasto sec ON v.Seccion = sec.Nombre AND cat.CategoriaPadreId = sec.CategoriaGastoId
-                      WHERE v.UsuarioId = :uid AND v.Anio = :anio AND v.Mes = :mes
-                      ORDER BY v.Seccion, v.Categoria";
+            // 1. Aseguramos que existan registros de presupuesto (con monto 0) para el periodo
+            $initStmt = $db->prepare("CALL Sp_InicializarPresupuestoUsuario(:uid, :anio, :mes)");
+            $initStmt->execute(['uid' => $usuarioId, 'anio' => $anio, 'mes' => $mes]);
+
+            // 2. Consultamos TODAS las secciones (padres) del usuario/sistema
+            // y les unimos sus categorías (hijos) y el presupuesto del periodo
+            $query = "SELECT 
+                        sec.CategoriaGastoId AS SeccionId,
+                        sec.Nombre AS Seccion,
+                        cat.CategoriaGastoId,
+                        cat.Nombre AS Categoria,
+                        COALESCE(p.Monto, 0) AS MontoPresupuestado,
+                        COALESCE((SELECT SUM(Monto) FROM Gastos 
+                                  WHERE CategoriaGastoId = cat.CategoriaGastoId 
+                                  AND UsuarioId = :uid 
+                                  AND YEAR(FechaGasto) = :anio 
+                                  AND MONTH(FechaGasto) = :mes 
+                                  AND EliminadoEn IS NULL), 0) AS MontoReal
+                      FROM CategoriasGasto sec
+                      LEFT JOIN CategoriasGasto cat ON cat.CategoriaPadreId = sec.CategoriaGastoId
+                      LEFT JOIN Presupuestos p ON cat.CategoriaGastoId = p.CategoriaGastoId 
+                                AND p.UsuarioId = :uid 
+                                AND p.Anio = :anio 
+                                AND p.Mes = :mes
+                      WHERE sec.CategoriaPadreId IS NULL 
+                        AND (sec.EsSistema = 1 OR sec.UsuarioId = :uid)
+                      ORDER BY sec.Nombre, cat.Nombre";
             
             $stmt = $db->prepare($query);
-            $stmt->bindParam(":uid", $usuarioId);
-            $stmt->bindParam(":anio", $anio);
-            $stmt->bindParam(":mes", $mes);
-            $stmt->execute();
-            
+            $stmt->execute(['uid' => $usuarioId, 'anio' => $anio, 'mes' => $mes]);
             $datos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            // Si no hay datos para este mes/año, inicializamos automáticamente
-            if (empty($datos)) {
-                $initQuery = "CALL Sp_InicializarPresupuestoUsuario(:uid, :anio, :mes)";
-                $initStmt = $db->prepare($initQuery);
-                $initStmt->bindParam(":uid", $usuarioId);
-                $initStmt->bindParam(":anio", $anio);
-                $initStmt->bindParam(":mes", $mes);
-                $initStmt->execute();
-
-                // Intentamos consultar de nuevo tras inicializar
-                $stmt->execute();
-                $datos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            }
             
-            // Agrupar por sección para facilitar el despliegue en el frontend (como en la imagen)
+            // Agrupar por sección
             $agrupado = [];
             foreach ($datos as $row) {
-                $seccion = $row['Seccion'];
-                if (!isset($agrupado[$seccion])) {
-                    $agrupado[$seccion] = [
-                        "Seccion" => $seccion,
+                $seccionId = $row['SeccionId'];
+                if (!isset($agrupado[$seccionId])) {
+                    $agrupado[$seccionId] = [
+                        "SeccionId" => $seccionId,
+                        "Seccion" => $row['Seccion'],
                         "Items" => []
                     ];
                 }
-                $agrupado[$seccion]["Items"][] = $row;
+                // Solo añadir a Items si hay una categoría hija real
+                if ($row['CategoriaGastoId']) {
+                    $agrupado[$seccionId]["Items"][] = $row;
+                }
             }
             
             echo json_encode([

@@ -153,6 +153,19 @@ select option {
   color: var(--text-main);
 }
 
+select optgroup {
+  background: var(--bg-paper);
+  color: var(--primary);
+  font-weight: 600;
+  font-style: normal;
+}
+
+select optgroup option {
+  background: var(--bg-paper);
+  color: var(--text-main);
+  font-weight: normal;
+}
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }

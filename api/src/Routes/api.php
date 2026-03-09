@@ -10,6 +10,7 @@ Router::get('/v1', function() {
 
 // Inicialización de Base de Datos (Correr una sola vez)
 Router::get('/v1/setup/seed', 'SetupController@seed');
+Router::get('/v1/setup/migrate-categories', 'SetupController@migrateCategories');
 
 // ==========================================
 // Admin Endpoints
@@ -46,7 +47,16 @@ Router::get('/v1/presupuestos/comparativo', 'PresupuestosController@getComparati
 Router::post('/v1/presupuestos/capturar', 'PresupuestosController@store');
 
 // ==========================================
+// Categorías Endpoints
+// ==========================================
+Router::get('/v1/categorias', 'CategoriasController@index');
+Router::post('/v1/categorias', 'CategoriasController@store');
+Router::post('/v1/categorias/actualizar', 'CategoriasController@update');
+Router::post('/v1/categorias/eliminar', 'CategoriasController@delete');
+
+// ==========================================
 // Sincronización e IA
 // ==========================================
 Router::post('/v1/sync', 'SyncController@syncOffline');
 Router::get('/v1/ia/analisis', 'IAController@analisisFinanciero');
+Router::get('/v1/reportes/consolidado', 'ReportesController@getConsolidado');
