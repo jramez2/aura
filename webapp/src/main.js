@@ -1,5 +1,5 @@
 import './style.css';
-import { createIcons, LayoutDashboard, Wallet, ReceiptText, User, LogOut, Menu, X, Plus, ChevronRight, ChevronDown, Edit2, TrendingUp, TrendingDown, Bell, Search, DollarSign, Calendar, PieChart, Save, Trash2, RefreshCw, Sun, Moon, Banknote, CreditCard, Scale, AlertTriangle } from 'lucide';
+import { createIcons, LayoutDashboard, Wallet, ReceiptText, User, LogOut, Menu, X, Plus, ChevronRight, ChevronDown, Edit2, TrendingUp, TrendingDown, Bell, Search, DollarSign, Calendar, PieChart, Save, Trash2, RefreshCw, Sun, Moon, Banknote, CreditCard, Scale, AlertTriangle, FolderPlus, Tag } from 'lucide';
 import { Chart } from 'chart.js/auto';
 
 // --- State Management ---
@@ -347,17 +347,22 @@ const BudgetView = () => {
         <p style="color: var(--text-muted);">Gestiona tus límites de gasto por categoría.</p>
       </div>
       
-      <div style="display: flex; gap: 0.75rem; background: var(--bg-card); padding: 0.5rem; border-radius: 12px; border: 1px solid var(--border);">
-        <select class="btn" id="select-month" style="width: auto; background: none; border: none; padding: 0.25rem 0.5rem;" onchange="changePeriod()">
-          ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => `
-            <option value="${m}" ${state.selectedMonth === m ? 'selected' : ''}>${getMonthName(m)}</option>
-          `).join('')}
-        </select>
-        <select class="btn" id="select-year" style="width: auto; background: none; border: none; padding: 0.25rem 0.5rem;" onchange="changePeriod()">
-          ${[2024, 2025, 2026].map(y => `
-            <option value="${y}" ${state.selectedYear === y ? 'selected' : ''}>${y}</option>
-          `).join('')}
-        </select>
+      <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+        <button class="btn btn-primary" style="width: auto; padding: 0.5rem 1rem; font-size: 0.875rem; display: flex; align-items: center; gap: 0.5rem;" onclick="openNewSectionModal()">
+          <i data-lucide="folder-plus" style="width: 16px;"></i> Nueva Sección
+        </button>
+        <div style="display: flex; gap: 0.75rem; background: var(--bg-card); padding: 0.5rem; border-radius: 12px; border: 1px solid var(--border);">
+          <select class="btn" id="select-month" style="width: auto; background: none; border: none; padding: 0.25rem 0.5rem;" onchange="changePeriod()">
+            ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => `
+              <option value="${m}" ${state.selectedMonth === m ? 'selected' : ''}>${getMonthName(m)}</option>
+            `).join('')}
+          </select>
+          <select class="btn" id="select-year" style="width: auto; background: none; border: none; padding: 0.25rem 0.5rem;" onchange="changePeriod()">
+            ${[2024, 2025, 2026].map(y => `
+              <option value="${y}" ${state.selectedYear === y ? 'selected' : ''}>${y}</option>
+            `).join('')}
+          </select>
+        </div>
       </div>
     </div>
 
@@ -404,9 +409,17 @@ const BudgetView = () => {
                       <i data-lucide="${isExpanded ? 'chevron-down' : 'chevron-right'}" style="color: var(--text-muted); width: 18px;"></i>
                       <h3 class="card-title" style="margin: 0;">${sec.Seccion}</h3>
                    </div>
-                   <div style="text-align: right;">
-                      <div style="font-size: 0.875rem; font-weight: 600;">${formatCurrency(secReal)} / <span style="color: var(--primary);">${formatCurrency(secPresupuesto)}</span></div>
-                      <div style="font-size: 0.7rem; color: var(--text-muted);">${pct.toFixed(1)}% utilizado</div>
+                   <div style="display: flex; align-items: center; gap: 0.75rem;">
+                      <div style="text-align: right;">
+                        <div style="font-size: 0.875rem; font-weight: 600;">${formatCurrency(secReal)} / <span style="color: var(--primary);">${formatCurrency(secPresupuesto)}</span></div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">${pct.toFixed(1)}% utilizado</div>
+                      </div>
+                      <button class="btn btn-outline" title="Añadir subcategoría" style="width: auto; padding: 0.3rem 0.5rem; border-color: var(--primary); color: var(--primary);" onclick="event.stopPropagation(); openNewSubcategoryModal('${sec.SeccionId}', '${sec.Seccion.replace(/'/g, "\'")}')">
+                        <i data-lucide="plus" style="width: 14px;"></i>
+                      </button>
+                      ${!sec.EsSistema ? `<button class="btn btn-outline" title="Eliminar sección" style="width: auto; padding: 0.3rem 0.5rem; border-color: var(--error); color: var(--error);" onclick="event.stopPropagation(); openDeleteCategoryModal('${sec.SeccionId}', '${sec.Seccion.replace(/'/g, "\'")}', true)">
+                        <i data-lucide="trash-2" style="width: 14px;"></i>
+                      </button>` : ''}
                    </div>
                 </div>
                 <div style="height: 6px; background: var(--bg-card); border-radius: 100px; overflow: hidden;">
@@ -435,10 +448,16 @@ const BudgetView = () => {
                         </td>
                         <td style="padding: 0.75rem; text-align: right; font-size: 0.875rem;">${formatCurrency(item.MontoReal)}</td>
                         <td style="padding: 0.75rem; text-align: center; border-top-right-radius: 8px; border-bottom-right-radius: 8px;">
-                          <button class="btn btn-outline" style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.75rem;" 
-                                  onclick="editBudget('${item.CategoriaGastoId}', '${item.Categoria}', ${item.MontoPresupuestado})">
-                            <i data-lucide="edit-2" style="width: 14px;"></i>
-                          </button>
+                          <div style="display: flex; gap: 0.4rem; justify-content: center;">
+                            <button class="btn btn-outline" style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.75rem;" 
+                                    onclick="editBudget('${item.CategoriaGastoId}', '${item.Categoria}', ${item.MontoPresupuestado})">
+                              <i data-lucide="edit-2" style="width: 14px;"></i>
+                            </button>
+                            ${!item.EsSistema ? `<button class="btn btn-outline" style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.75rem; border-color: var(--error); color: var(--error);" 
+                                    onclick="openDeleteCategoryModal('${item.CategoriaGastoId}', '${item.Categoria.replace(/'/g, "\'")}', false)">
+                              <i data-lucide="trash-2" style="width: 14px;"></i>
+                            </button>` : ''}
+                          </div>
                         </td>
                       </tr>
                     `).join('')}
@@ -493,6 +512,71 @@ const saveBudget = async (catId, amount) => {
     });
     showToast('Presupuesto actualizado', 'success');
     fetchData();
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+// ── Gestión de Categorías / Secciones ──────────────────────────────
+
+window.openNewSectionModal = () => {
+  state.activeModal = { type: 'new-section', data: {} };
+  render();
+};
+
+window.openNewSubcategoryModal = (seccionId, seccionNombre) => {
+  state.activeModal = { type: 'new-subcategory', data: { seccionId, seccionNombre } };
+  render();
+};
+
+window.openDeleteCategoryModal = (id, nombre, isSection) => {
+  state.activeModal = { type: 'delete-category', data: { id, nombre, isSection } };
+  render();
+};
+
+window.confirmNewSection = async () => {
+  const nombre = document.getElementById('modal-section-name')?.value?.trim();
+  if (!nombre) { showToast('El nombre es requerido', 'error'); return; }
+  try {
+    await api.fetch('/categorias', {
+      method: 'POST',
+      body: JSON.stringify({ nombre, icono: 'folder' })
+    });
+    showToast(`Sección "${nombre}" creada`, 'success');
+    closeModal();
+    fetchBudgetData();
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+window.confirmNewSubcategory = async () => {
+  const nombre = document.getElementById('modal-subcat-name')?.value?.trim();
+  if (!nombre) { showToast('El nombre es requerido', 'error'); return; }
+  const { seccionId } = state.activeModal.data;
+  try {
+    await api.fetch('/categorias', {
+      method: 'POST',
+      body: JSON.stringify({ nombre, icono: 'tag', categoria_padre_id: seccionId })
+    });
+    showToast(`Subcategoría "${nombre}" creada`, 'success');
+    closeModal();
+    fetchBudgetData();
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+window.confirmDeleteCategory = async () => {
+  const { id, nombre } = state.activeModal.data;
+  try {
+    await api.fetch('/categorias/eliminar', {
+      method: 'POST',
+      body: JSON.stringify({ id })
+    });
+    showToast(`"${nombre}" eliminado`, 'success');
+    closeModal();
+    fetchBudgetData();
   } catch (err) {
     console.error(err);
   }
@@ -885,6 +969,62 @@ const Modal = () => {
         <i data-lucide="save" style="width:16px;"></i> Guardar
       </button>
     `;
+  } else if (type === 'new-section') {
+    modalTitle = `<i data-lucide="folder-plus" style="width:22px; color: var(--primary);"></i> Nueva Sección`;
+    modalBody = `
+      <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+        <div>
+          <label class="form-label">Nombre de la Sección</label>
+          <input type="text" id="modal-section-name" class="form-input" placeholder="Ej. Hogar, Educación, Salud..." autofocus>
+        </div>
+        <p style="color: var(--text-muted); font-size: 0.8rem;">Las secciones agrupan tus subcategorías de gasto. Podrás añadir subcategorías después de crearla.</p>
+      </div>
+    `;
+    modalFooter = `
+      <button class="btn btn-outline" style="width:auto;" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" style="width:auto;" onclick="confirmNewSection()">
+        <i data-lucide="save" style="width:16px;"></i> Crear Sección
+      </button>
+    `;
+  } else if (type === 'new-subcategory') {
+    modalTitle = `<i data-lucide="tag" style="width:22px; color: var(--secondary);"></i> Nueva Subcategoría`;
+    modalBody = `
+      <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+        <div>
+          <label class="form-label">Sección padre</label>
+          <input type="text" class="form-input" value="${data.seccionNombre}" disabled style="opacity: 0.7;">
+        </div>
+        <div>
+          <label class="form-label">Nombre de la Subcategoría</label>
+          <input type="text" id="modal-subcat-name" class="form-input" placeholder="Ej. Supermercado, Netflix, Gimnasio..." autofocus>
+        </div>
+        <p style="color: var(--text-muted); font-size: 0.8rem;">Se inicializará automáticamente con presupuesto $0 para el mes actual.</p>
+      </div>
+    `;
+    modalFooter = `
+      <button class="btn btn-outline" style="width:auto;" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" style="width:auto;" onclick="confirmNewSubcategory()">
+        <i data-lucide="save" style="width:16px;"></i> Crear Subcategoría
+      </button>
+    `;
+  } else if (type === 'delete-category') {
+    const isSection = data.isSection;
+    modalTitle = `<i data-lucide="alert-triangle" style="color: var(--error); width: 24px;"></i> Eliminar ${isSection ? 'Sección' : 'Subcategoría'}`;
+    modalBody = `
+      <div style="text-align: center; padding: 1rem 0;">
+        <p style="font-size: 1.05rem; font-weight: 500; margin-bottom: 0.75rem;">¿Eliminar <b>"${data.nombre}"</b>?</p>
+        ${isSection
+          ? `<p style="color: var(--text-muted); font-size: 0.875rem;">Solo puedes eliminar la sección si no tiene subcategorías asociadas.</p>`
+          : `<p style="color: var(--text-muted); font-size: 0.875rem;">Solo se puede eliminar si no tiene gastos registrados. Se eliminará también su presupuesto asignado.</p>`
+        }
+      </div>
+    `;
+    modalFooter = `
+      <button class="btn btn-outline" style="width:auto;" onclick="closeModal()">Cancelar</button>
+      <button class="btn" style="width:auto; background: var(--error); color: white;" onclick="confirmDeleteCategory()">
+        <i data-lucide="trash-2" style="width:16px;"></i> Eliminar
+      </button>
+    `;
   } else if (isNewExpense || isEditingExpense) {
     modalTitle = isEditingExpense ? 'Editar Gasto' : 'Nuevo Gasto';
     modalBody = `
@@ -1168,7 +1308,7 @@ const render = () => {
     LayoutDashboard, Wallet, ReceiptText, User, LogOut, Menu, X, Plus, 
     ChevronRight, ChevronDown, Edit2, TrendingUp, TrendingDown, Bell, 
     Search, DollarSign, Calendar, PieChart, Save, Trash2, RefreshCw, 
-    Sun, Moon, Banknote, CreditCard, Scale, AlertTriangle 
+    Sun, Moon, Banknote, CreditCard, Scale, AlertTriangle, FolderPlus, Tag
   };
 
   setupEventListeners();
