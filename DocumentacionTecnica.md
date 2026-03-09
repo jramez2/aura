@@ -1,0 +1,68 @@
+🌌 AuraApp API - Documentación Técnica v1.0
+Esta documentación describe la arquitectura, endpoints y procesos de integración de la API de AuraApp, diseñada para soportar una plataforma SaaS de gestión de gastos con capacidades offline y análisis mediante IA.
+
+🏗️ Arquitectura del Sistema
+La API está construida bajo una arquitectura MVC (Modelo-Vista-Controlador) personalizada en PHP, priorizando la ligereza y el rendimiento en el servidor.
+
+Entry Point: 
+api/index.php
+ (Front Controller)
+Router: Sistema de ruteo dinámico con soporte para parámetros {id} y verbos RESTful (GET, POST, PUT, DELETE).
+Seguridad: Stateless Authentication mediante JWT (JSON Web Tokens).
+Base de Datos: MySQL remoto (Hostinger) con soporte para integridad referencial.
+🔐 Autenticación
+Todas las rutas protegidas requieren el header Authorization.
+
+Formato: Authorization: Bearer <tu_token_jwt>
+
+Endpoint	Método	Descripción	Retorno
+/v1/registro	POST	Crea un nuevo usuario en la plataforma.	Status 201
+/v1/login	POST	Valida credenciales y devuelve el JWT.	JSON con Token
+💰 Gestión de Gastos (CRUD)
+Implementa Borrado Lógico (Soft Delete) para garantizar la consistencia en la sincronización.
+
+Endpoint	Método	Descripción
+/v1/gastos	GET	Lista gastos activos del usuario autenticado.
+/v1/gastos	POST	Crea un nuevo registro de gasto.
+/v1/gastos/{id}	PUT	Actualización parcial del gasto (monto, desc, etc).
+/v1/gastos/eliminar/{id}	DELETE	Marca un gasto como eliminado (No destructivo).
+/v1/gastos/restaurar/{id}	PUT	Recupera un gasto borrado lógicamente.
+🔄 Motor de Sincronización (Offline-First)
+Diseñado para procesar múltiples cambios acumulados en el dispositivo móvil cuando recupera conexión.
+
+Endpoint: POST /v1/sync
+
+Estructura del Payload:
+
+json
+{
+  "cambios": [
+    {
+      "accion": "crear",
+      "tabla": "gastos",
+      "data": { "id_local": "uuid-123", "monto": 50.00, "categoria_id": 1 }
+    },
+    { "accion": "eliminar", "tabla": "gastos", "data": { "id": 45 } }
+  ]
+}
+Garantiza atomicidad mediante transacciones SQL (Si falla uno, fallan todos).
+
+🤖 Aura Insights (IA)
+Analiza el comportamiento financiero del usuario mediante un motor de reglas especializado.
+
+Endpoint: GET /v1/ia/analisis
+
+Respuestas Clave:
+
+Resumen Mensual: Cómputo total de gastos por mes.
+Distribución: Gasto segmentado por categorías.
+Insights: Consejos automatizados (Alerta de fugas, felicitaciones por ahorro, Aura Tips).
+📊 Dashboard Administrativo
+Interfaz de gestión centralizada para el dueño de la SaaS.
+
+Acceso Directo: https://adminnube.com/aura/admin/
+Métricas Tiempo Real: Consulta dinámica de Usuarios, MRR (Monthly Recurring Revenue) y adopción de la plataforma.
+🛠️ Comandos de Mantenimiento
+Para inicializar las tablas maestras (Planes, Estados, Monedas, Categorías): 👉 GET https://adminnube.com/aura/api/v1/setup/seed
+
+Desarrollado por Antigravity AI para AuraApp.

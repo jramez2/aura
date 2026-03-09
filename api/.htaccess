@@ -1,0 +1,12 @@
+RewriteEngine On
+
+# Si la carpeta es accesible pero el servidor bloquea peticiones JSON o Headers, 
+# forzamos a que todo pase por index.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# Prevenir que el servidor bloquee el header Authorization (Común en Hostinger/Apache)
+<IfModule mod_rewrite.c>
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+</IfModule>
