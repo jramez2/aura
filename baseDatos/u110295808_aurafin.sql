@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1:3306
--- Tiempo de generación: 09-03-2026 a las 19:10:09
+-- Tiempo de generación: 09-03-2026 a las 21:11:48
 -- Versión del servidor: 11.8.3-MariaDB-log
 -- Versión de PHP: 7.2.34
 
@@ -28,32 +28,41 @@ DELIMITER $$
 DROP PROCEDURE IF EXISTS `Sp_InicializarPresupuestoUsuario`$$
 CREATE DEFINER=`u110295808_aurafin`@`127.0.0.1` PROCEDURE `Sp_InicializarPresupuestoUsuario` (IN `p_UsuarioId` BIGINT, IN `p_Anio` INT, IN `p_Mes` INT)   BEGIN
     DECLARE v_AnioPrev INT;
-    DECLARE v_MesPrev INT;
-    
-    IF p_Mes = 1 THEN
-        SET v_MesPrev = 12;
+    DECLARE v_MesPrev  INT;
+
+    -- Calcular mes anterior
+    IF p_Mes = 1 THEN 
+        SET v_MesPrev  = 12;
         SET v_AnioPrev = p_Anio - 1;
     ELSE
-        SET v_MesPrev = p_Mes - 1;
+        SET v_MesPrev  = p_Mes - 1;
         SET v_AnioPrev = p_Anio;
     END IF;
 
+    -- Insertar registros para el periodo destino.
+    -- Si existe presupuesto del mes anterior se copia el monto; si no, se pone 0.
+    -- INSERT IGNORE garantiza que no se sobreescriben registros ya existentes.
     INSERT IGNORE INTO Presupuestos (UsuarioId, CategoriaGastoId, Monto, MonedaId, Anio, Mes, TipoPeriodoId)
-    SELECT 
-        p_UsuarioId, 
-        cat.CategoriaGastoId, 
-        COALESCE(prev.Monto, 0.00), 
-        COALESCE(prev.MonedaId, (SELECT MonedaPreferidaId FROM Usuarios WHERE UsuarioId = p_UsuarioId LIMIT 1), 1),
-        p_Anio, 
-        p_Mes, 
-        1 
+    SELECT
+        p_UsuarioId,
+        cat.CategoriaGastoId,
+        COALESCE(prev.Monto, 0.00),
+        COALESCE(
+            prev.MonedaId,
+            (SELECT MonedaPreferidaId FROM Usuarios WHERE UsuarioId = p_UsuarioId LIMIT 1),
+            1
+        ),
+        p_Anio,
+        p_Mes,
+        1  -- Mensual
     FROM CategoriasGasto cat
-    LEFT JOIN Presupuestos prev ON prev.UsuarioId = p_UsuarioId 
-        AND prev.CategoriaGastoId = cat.CategoriaGastoId 
-        AND prev.Anio = v_AnioPrev 
-        AND prev.Mes = v_MesPrev
-    WHERE cat.CategoriaPadreId IS NOT NULL 
-      AND (cat.EsSistema = 1 OR cat.UsuarioId = p_UsuarioId);
+    LEFT JOIN Presupuestos prev
+           ON prev.UsuarioId        = p_UsuarioId
+          AND prev.CategoriaGastoId = cat.CategoriaGastoId
+          AND prev.Anio             = v_AnioPrev
+          AND prev.Mes              = v_MesPrev
+    WHERE cat.CategoriaPadreId IS NOT NULL
+      AND (cat.EsSistema = 1 OR cat.UsuarioId = p_UsuarioId);  -- <-- incluye categorías del usuario
 END$$
 
 DELIMITER ;
@@ -173,7 +182,14 @@ INSERT INTO `CategoriasGasto` (`CategoriaGastoId`, `Nombre`, `Icono`, `Categoria
 (77, 'Préstamo 1', 'cash-outline', 11, NULL, 1, '2026-03-09 04:06:46'),
 (78, 'Préstamo 2', 'cash-outline', 11, NULL, 1, '2026-03-09 04:06:46'),
 (79, 'Otros PRÉSTAMOS', 'ellipsis-horizontal-outline', 11, NULL, 1, '2026-03-09 04:06:46'),
-(80, 'Compras en linea', 'tag-outline', NULL, 8, 0, '2026-03-09 19:03:42');
+(80, 'COMPRAS EN LINEA', 'tag-outline', NULL, 8, 0, '2026-03-09 19:03:42'),
+(81, 'MERCADO LIBRE', 'tag-outline', 80, 8, 0, '2026-03-09 19:18:39'),
+(82, 'TEMU', 'tag-outline', 80, 8, 0, '2026-03-09 19:18:45'),
+(83, 'ALIEXPRESS', 'tag-outline', 80, 8, 0, '2026-03-09 19:18:54'),
+(84, 'Otra Categoría', 'tag-outline', NULL, 9, 0, '2026-03-09 19:26:28'),
+(85, '1 opcion de otra categoria ', 'tag-outline', 84, 9, 0, '2026-03-09 19:26:48'),
+(86, 'Comida Familia', 'tag-outline', 3, 8, 0, '2026-03-09 19:37:14'),
+(88, 'SHEIN', 'tag', 80, 8, 0, '2026-03-09 20:51:07');
 
 -- --------------------------------------------------------
 
@@ -298,7 +314,9 @@ INSERT INTO `Gastos` (`GastoId`, `IdentificadorLocal`, `UsuarioId`, `CategoriaGa
 (7, NULL, 8, 36, NULL, 130.00, NULL, 'compra soriana audífonos', '2026-03-08 00:00:00', NULL, NULL, NULL, NULL, NULL, '2026-03-09 17:08:16', NULL, NULL, 1),
 (8, NULL, 8, 16, NULL, 200.00, NULL, 'xxx', '2026-03-09 00:00:00', NULL, NULL, NULL, NULL, NULL, '2026-03-09 17:08:35', '2026-03-09 17:08:41', '2026-03-09 17:08:50', 1),
 (9, NULL, 9, 34, NULL, 1166.00, NULL, 'Licencia Manejo', '2026-03-09 00:00:00', NULL, NULL, NULL, NULL, NULL, '2026-03-09 19:01:28', NULL, NULL, 1),
-(10, NULL, 9, 27, NULL, 88.00, NULL, 'Desayuno', '2026-03-09 00:00:00', NULL, NULL, NULL, NULL, NULL, '2026-03-09 19:02:32', NULL, NULL, 1);
+(10, NULL, 9, 27, NULL, 88.00, NULL, 'Desayuno', '2026-03-09 00:00:00', NULL, NULL, NULL, NULL, NULL, '2026-03-09 19:02:32', NULL, NULL, 1),
+(11, NULL, 8, 81, NULL, 730.00, NULL, 'TV BOX ANDROID', '2026-03-09 00:00:00', NULL, NULL, NULL, NULL, NULL, '2026-03-09 19:19:37', '2026-03-09 20:39:16', NULL, 1),
+(12, NULL, 8, 88, NULL, 1200.00, NULL, 'ROPA PARA LA BEBA', '2026-03-09 00:00:00', NULL, NULL, NULL, NULL, NULL, '2026-03-09 20:52:46', NULL, NULL, 1);
 
 -- --------------------------------------------------------
 
@@ -535,7 +553,7 @@ INSERT INTO `Presupuestos` (`PresupuestoId`, `UsuarioId`, `CategoriaGastoId`, `M
 (23, 8, 34, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
 (24, 8, 35, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
 (25, 8, 36, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
-(26, 8, 37, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
+(26, 8, 37, 300.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
 (27, 8, 38, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
 (28, 8, 39, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
 (29, 8, 40, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
@@ -552,9 +570,9 @@ INSERT INTO `Presupuestos` (`PresupuestoId`, `UsuarioId`, `CategoriaGastoId`, `M
 (40, 8, 51, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
 (41, 8, 52, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
 (42, 8, 53, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
-(43, 8, 54, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
-(44, 8, 55, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
-(45, 8, 56, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
+(43, 8, 54, 4000.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
+(44, 8, 55, 800.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
+(45, 8, 56, 400.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
 (46, 8, 57, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
 (47, 8, 58, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
 (48, 8, 59, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
@@ -578,8 +596,8 @@ INSERT INTO `Presupuestos` (`PresupuestoId`, `UsuarioId`, `CategoriaGastoId`, `M
 (66, 8, 77, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
 (67, 8, 78, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
 (68, 8, 79, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 04:49:20'),
-(130, 8, 28, 1200.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 05:07:55'),
-(131, 8, 27, 2000.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 05:08:10'),
+(130, 8, 28, 2400.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 05:07:55'),
+(131, 8, 27, 500.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 05:08:10'),
 (132, 8, 30, 1200.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 05:15:12'),
 (134, 8, 12, 0.00, 1, 2026, 4, 1, NULL, NULL, '2026-03-09 05:36:45'),
 (135, 8, 13, 0.00, 1, 2026, 4, 1, NULL, NULL, '2026-03-09 05:36:45'),
@@ -852,7 +870,13 @@ INSERT INTO `Presupuestos` (`PresupuestoId`, `UsuarioId`, `CategoriaGastoId`, `M
 (582, 9, 76, 0.00, 1, 2026, 3, 1, NULL, NULL, '2026-03-09 16:43:57'),
 (583, 9, 77, 0.00, 1, 2026, 3, 1, NULL, NULL, '2026-03-09 16:43:57'),
 (584, 9, 78, 0.00, 1, 2026, 3, 1, NULL, NULL, '2026-03-09 16:43:57'),
-(585, 9, 79, 0.00, 1, 2026, 3, 1, NULL, NULL, '2026-03-09 16:43:57');
+(585, 9, 79, 0.00, 1, 2026, 3, 1, NULL, NULL, '2026-03-09 16:43:57'),
+(650, 8, 81, 1000.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 19:18:39'),
+(652, 8, 82, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 19:18:45'),
+(654, 8, 83, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 19:18:54'),
+(664, 9, 85, 0.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 19:26:48'),
+(675, 8, 86, 4000.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 19:37:14'),
+(694, 8, 88, 350.00, NULL, 2026, 3, 1, NULL, NULL, '2026-03-09 20:51:07');
 
 -- --------------------------------------------------------
 
@@ -1042,8 +1066,8 @@ CREATE TABLE `Usuarios` (
 
 INSERT INTO `Usuarios` (`UsuarioId`, `Email`, `PasswordHash`, `NombreMostrar`, `EstadoUsuarioId`, `PlanUsuarioId`, `MonedaPreferidaId`, `ZonaHoraria`, `CreadoEn`, `UltimoLogin`) VALUES
 (7, 'juan@cloud.com', '$2y$10$ay7SRwE2QpxsMfP7yocWMO3qynjFgINNSqL1HkyJwsS6lV3ZjazOC', 'Juan Carlos', 1, 1, NULL, NULL, '2026-03-07 07:41:16', '2026-03-07 07:42:49'),
-(8, 'jramez@gmail.com', '$2y$10$c.ApqNapqkzlm0voSrE35eO8qwFc/O.H4.R6KE8uiFURacrdFjIuW', 'Jesus Ramirez Meza', 1, 1, NULL, NULL, '2026-03-09 04:49:20', '2026-03-09 16:36:35'),
-(9, 'juanjosetorresj@gmail.com', '$2y$10$4mDF3xhzYtO5C.aEOl0oLOcczubmuQLEjEj.zmNXeZ0n6Ci1eqDXS', 'Juan José Torres Jáuregui ', 1, 1, NULL, NULL, '2026-03-09 16:43:56', '2026-03-09 19:05:09');
+(8, 'jramez@gmail.com', '$2y$10$c.ApqNapqkzlm0voSrE35eO8qwFc/O.H4.R6KE8uiFURacrdFjIuW', 'Jesus Ramirez Meza', 1, 1, NULL, NULL, '2026-03-09 04:49:20', '2026-03-09 20:31:01'),
+(9, 'juanjosetorresj@gmail.com', '$2y$10$4mDF3xhzYtO5C.aEOl0oLOcczubmuQLEjEj.zmNXeZ0n6Ci1eqDXS', 'Juan José Torres Jáuregui ', 1, 1, NULL, NULL, '2026-03-09 16:43:56', '2026-03-09 19:21:20');
 
 -- --------------------------------------------------------
 
@@ -1333,7 +1357,7 @@ ALTER TABLE `AportacionesMeta`
 -- AUTO_INCREMENT de la tabla `CategoriasGasto`
 --
 ALTER TABLE `CategoriasGasto`
-  MODIFY `CategoriaGastoId` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=81;
+  MODIFY `CategoriaGastoId` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=90;
 
 --
 -- AUTO_INCREMENT de la tabla `CiclosFacturacion`
@@ -1369,7 +1393,7 @@ ALTER TABLE `EventosSincronizacion`
 -- AUTO_INCREMENT de la tabla `Gastos`
 --
 ALTER TABLE `Gastos`
-  MODIFY `GastoId` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
+  MODIFY `GastoId` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
 
 --
 -- AUTO_INCREMENT de la tabla `Hogares`
@@ -1441,7 +1465,7 @@ ALTER TABLE `PlanesUsuario`
 -- AUTO_INCREMENT de la tabla `Presupuestos`
 --
 ALTER TABLE `Presupuestos`
-  MODIFY `PresupuestoId` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=646;
+  MODIFY `PresupuestoId` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=703;
 
 --
 -- AUTO_INCREMENT de la tabla `Retos`

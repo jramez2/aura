@@ -11,6 +11,7 @@ const state = {
   data: {
     gastos: [],
     presupuestos: [],
+    categorias: [],       // lista plana de categorías (sin depender del mes)
     stats: { balance: 0, presupuesto: 0, gastosMes: 0 },
     lastFetched: null
   },
@@ -544,6 +545,7 @@ window.confirmNewSection = async () => {
     });
     showToast(`Sección "${nombre}" creada`, 'success');
     closeModal();
+    await fetchCategorias();
     fetchBudgetData();
   } catch (err) {
     console.error(err);
@@ -561,6 +563,7 @@ window.confirmNewSubcategory = async () => {
     });
     showToast(`Subcategoría "${nombre}" creada`, 'success');
     closeModal();
+    await fetchCategorias();
     fetchBudgetData();
   } catch (err) {
     console.error(err);
@@ -576,6 +579,7 @@ window.confirmDeleteCategory = async () => {
     });
     showToast(`"${nombre}" eliminado`, 'success');
     closeModal();
+    await fetchCategorias();
     fetchBudgetData();
   } catch (err) {
     console.error(err);
@@ -778,7 +782,7 @@ const ExpensesView = () => {
     <div class="card">
       <div class="card-header" style="background: var(--surface);">
          <div style="display:flex; justify-content: space-between; width: 100%; align-items: center;">
-            <div id="expenses-results-count" style="font-size: 0.875rem; color: var(--text-muted);">Resultados para: <b>${getMonthName(state.selectedMonth)} ${state.selectedYear}</b> (${filteredGastos.length} registros)</div>
+            <div id="expenses-results-count" style="font-size: 0.875rem; color: var(--text-muted);">Resultados para: <b>${getMonthName(state.selectedMonthExpenses)} ${state.selectedYearExpenses}</b> (${filteredGastos.length} registros)</div>
          </div>
       </div>
       <div class="card-body" style="padding: 0;">
@@ -1047,13 +1051,31 @@ const Modal = () => {
           <label class="form-label">Categoría</label>
           <select id="expense-category" class="form-input" style="appearance: auto;">
             <option value="">Seleccionar categoría...</option>
-            ${state.data.presupuestos.map(sec => `
-              <optgroup label="${sec.Seccion}">
-                ${sec.Items.map(cat => `
-                  <option value="${cat.CategoriaGastoId}" ${data.CategoriaGastoId == cat.CategoriaGastoId ? 'selected' : ''}>${cat.Categoria}</option>
-                `).join('')}
-              </optgroup>
-            `).join('')}
+            ${(() => {
+              // Agrupar categorias planas por padre (independiente del mes seleccionado)
+              const padres = state.data.categorias.filter(c => !c.CategoriaPadreId);
+              const hijos  = state.data.categorias.filter(c =>  c.CategoriaPadreId);
+              if (padres.length === 0) {
+                // Fallback: usar presupuestos si categorias aún no se han cargado
+                return state.data.presupuestos.map(sec =>
+                  `<optgroup label="${sec.Seccion}">
+                    ${sec.Items.map(cat =>
+                      `<option value="${cat.CategoriaGastoId}" ${data.CategoriaGastoId == cat.CategoriaGastoId ? 'selected' : ''}>${cat.Categoria}</option>`
+                    ).join('')}
+                  </optgroup>`
+                ).join('');
+              }
+              return padres.sort((a,b) => a.Nombre.localeCompare(b.Nombre)).map(padre => {
+                const subcats = hijos.filter(h => h.CategoriaPadreId == padre.CategoriaGastoId)
+                                     .sort((a,b) => a.Nombre.localeCompare(b.Nombre));
+                if (subcats.length === 0) return '';
+                return `<optgroup label="${padre.Nombre}">
+                  ${subcats.map(cat =>
+                    `<option value="${cat.CategoriaGastoId}" ${data.CategoriaGastoId == cat.CategoriaGastoId ? 'selected' : ''}>${cat.Nombre}</option>`
+                  ).join('')}
+                </optgroup>`;
+              }).join('');
+            })()}
           </select>
         </div>
       </div>
@@ -1171,8 +1193,12 @@ const fetchExpensesData = async () => {
   if (!state.token) return;
   try {
     const params = `?anio=${state.selectedYearExpenses}&mes=${state.selectedMonthExpenses.toString().padStart(2, '0')}`;
-    const gastos = await api.fetch(`/gastos${params}`);
+    // También recargamos categorias si aún no se han cargado
+    const fetches = [api.fetch(`/gastos${params}`)];
+    if (state.data.categorias.length === 0) fetches.push(api.fetch('/categorias'));
+    const [gastos, cats] = await Promise.all(fetches);
     state.data.gastos = gastos.data || [];
+    if (cats) state.data.categorias = cats.data || [];
     render();
   } catch (err) { console.error(err); }
 };
@@ -1208,19 +1234,29 @@ const fetchBudgetData = async () => {
   } catch (err) { console.error(err); }
 };
 
+const fetchCategorias = async () => {
+  if (!state.token) return;
+  try {
+    const result = await api.fetch('/categorias');
+    state.data.categorias = result.data || [];
+  } catch (err) { console.error('fetchCategorias:', err); }
+};
+
 const fetchData = async () => {
   if (!state.token) return;
   try {
     const paramsExp = `?anio=${state.selectedYearExpenses}&mes=${state.selectedMonthExpenses.toString().padStart(2, '0')}`;
     const paramsBud = `?anio=${state.selectedYear}&mes=${state.selectedMonth.toString().padStart(2, '0')}`;
     
-    const [gastos, comp] = await Promise.all([
+    const [gastos, comp, cats] = await Promise.all([
       api.fetch(`/gastos${paramsExp}`),
-      api.fetch(`/presupuestos/comparativo${paramsBud}`)
+      api.fetch(`/presupuestos/comparativo${paramsBud}`),
+      api.fetch('/categorias')
     ]);
     
     state.data.gastos = gastos.data || [];
     state.data.presupuestos = comp.data || [];
+    state.data.categorias = cats.data || [];
     
     // Stats para Dashboard (usa el periodo de presupuesto por defecto)
     const totalGastoForDashboard = state.data.gastos.reduce((sum, g) => {
