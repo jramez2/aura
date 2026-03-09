@@ -700,3 +700,29 @@ tr:last-child td {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px var(--primary-glow);
 }
+
+/* ── Consolidado Anual ─────────────────────────────── */
+.annual-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.annual-table-wrap::-webkit-scrollbar {
+  height: 6px;
+}
+
+.annual-table-wrap::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.annual-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 100px;
+}
+
+.annual-table-wrap::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+

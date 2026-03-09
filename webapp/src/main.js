@@ -1,6 +1,7 @@
 import './style.css';
-import { createIcons, LayoutDashboard, Wallet, ReceiptText, User, LogOut, Menu, X, Plus, ChevronRight, ChevronDown, Edit2, TrendingUp, TrendingDown, Bell, Search, DollarSign, Calendar, PieChart, Save, Trash2, RefreshCw, Sun, Moon, Banknote, CreditCard, Scale, AlertTriangle, FolderPlus, Tag } from 'lucide';
+import { createIcons, LayoutDashboard, Wallet, ReceiptText, User, LogOut, Menu, X, Plus, ChevronRight, ChevronDown, Edit2, TrendingUp, TrendingDown, Bell, Search, DollarSign, Calendar, PieChart, Save, Trash2, RefreshCw, Sun, Moon, Banknote, CreditCard, Scale, AlertTriangle, FolderPlus, Tag, BarChart3 } from 'lucide';
 import { Chart } from 'chart.js/auto';
+import * as XLSX from 'xlsx';
 
 // --- State Management ---
 const state = {
@@ -12,6 +13,7 @@ const state = {
     gastos: [],
     presupuestos: [],
     categorias: [],       // lista plana de categorías (sin depender del mes)
+    annualData: null,     // consolidado anual
     stats: { balance: 0, presupuesto: 0, gastosMes: 0 },
     lastFetched: null
   },
@@ -22,6 +24,7 @@ const state = {
   selectedYear: new Date().getFullYear(),
   selectedMonthExpenses: new Date().getMonth() + 1,
   selectedYearExpenses: new Date().getFullYear(),
+  selectedAnnualYear: new Date().getFullYear(),
   filters: {
     search: '',
     category: '',
@@ -218,6 +221,9 @@ const Sidebar = () => `
       </a>
       <a href="/expenses" class="nav-item ${state.currentRoute === '/expenses' ? 'active' : ''}" data-route="/expenses">
         <i data-lucide="receipt-text" size="20"></i> Gastos
+      </a>
+      <a href="/annual" class="nav-item ${state.currentRoute === '/annual' ? 'active' : ''}" data-route="/annual">
+        <i data-lucide="bar-chart-3" size="20"></i> Consolidado Anual
       </a>
       <a href="/profile" class="nav-item ${state.currentRoute === '/profile' ? 'active' : ''}" data-route="/profile">
         <i data-lucide="user" size="20"></i> Perfil
@@ -929,6 +935,302 @@ const ProfileView = () => `
   </div>
 `;
 
+// ── Consolidado Anual ─────────────────────────────────────────────
+
+const fmtMoney = (n) => {
+  const v = parseFloat(n) || 0;
+  if (v === 0) return '<span style="color:var(--text-muted);">—</span>';
+  return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v);
+};
+
+const fmtDif = (n) => {
+  const v = parseFloat(n) || 0;
+  if (v === 0) return '<span style="color:var(--text-muted);">—</span>';
+  const color = v >= 0 ? 'var(--success)' : 'var(--error)';
+  const sign = v > 0 ? '+' : '';
+  return `<span style="color:${color}; font-weight:600;">${sign}${new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v)}</span>`;
+};
+
+const AnnualView = () => {
+  const report  = state.data.annualData;
+  const months  = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const MESES   = [1,2,3,4,5,6,7,8,9,10,11,12];
+
+  // ── Celdas de cabecera por mes (colspan 3) ──
+  const mesHeaders = MESES.map(m => `
+    <th colspan="3" style="text-align:center; background:var(--bg-card); padding:0.5rem 0.25rem; font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--primary); border-bottom:2px solid var(--primary); white-space:nowrap;">
+      ${months[m-1]}
+    </th>`).join('');
+
+  const subHeaders = MESES.map(() => `
+    <th style="padding:0.35rem 0.4rem; font-size:0.62rem; color:var(--text-muted); text-transform:uppercase; text-align:right; background:var(--bg-card); white-space:nowrap;">Pres.</th>
+    <th style="padding:0.35rem 0.4rem; font-size:0.62rem; color:var(--text-muted); text-transform:uppercase; text-align:right; background:var(--bg-card); white-space:nowrap;">Real</th>
+    <th style="padding:0.35rem 0.4rem; font-size:0.62rem; color:var(--text-muted); text-transform:uppercase; text-align:right; background:var(--bg-card); white-space:nowrap;">Dif.</th>`).join('');
+
+  let bodyRows   = '';
+  const grandTotal = { P: {}, R: {} };
+  MESES.forEach(m => { grandTotal.P[m] = 0; grandTotal.R[m] = 0; });
+
+  if (report) {
+    report.data.forEach(sec => {
+      // ── Fila de sección ──
+      const secCells = MESES.map(m => {
+        const p = sec.Totales[m]?.P ?? 0;
+        const r = sec.Totales[m]?.R ?? 0;
+        const d = p - r;
+        grandTotal.P[m] += p;
+        grandTotal.R[m] += r;
+        return `<td style="text-align:right; padding:0.5rem 0.4rem; font-size:0.72rem; font-weight:700;">${fmtMoney(p)}</td>
+                <td style="text-align:right; padding:0.5rem 0.4rem; font-size:0.72rem; font-weight:700;">${fmtMoney(r)}</td>
+                <td style="text-align:right; padding:0.5rem 0.4rem; font-size:0.72rem;">${fmtDif(d)}</td>`;
+      }).join('');
+
+      const secTotalP = MESES.reduce((s,m) => s + (sec.Totales[m]?.P ?? 0), 0);
+      const secTotalR = MESES.reduce((s,m) => s + (sec.Totales[m]?.R ?? 0), 0);
+
+      bodyRows += `
+        <tr style="background:var(--bg-card);">
+          <td style="padding:0.6rem 0.75rem; font-size:0.8rem; font-weight:700; text-transform:uppercase; color:var(--text-main); white-space:nowrap; position:sticky; left:0; background:var(--bg-card); z-index:2; border-right:2px solid var(--border); min-width:180px; max-width:220px;">
+            ${sec.Nombre}
+          </td>
+          ${secCells}
+          <td style="text-align:right; padding:0.5rem 0.4rem; font-size:0.72rem; font-weight:700; background:var(--bg-card);">${fmtMoney(secTotalP)}</td>
+          <td style="text-align:right; padding:0.5rem 0.4rem; font-size:0.72rem; font-weight:700; background:var(--bg-card);">${fmtMoney(secTotalR)}</td>
+          <td style="text-align:right; padding:0.5rem 0.4rem; font-size:0.72rem; background:var(--bg-card);">${fmtDif(secTotalP - secTotalR)}</td>
+        </tr>`;
+
+      // ── Filas de subcategorías ──
+      sec.Categorias.forEach(cat => {
+        const catCells = MESES.map(m => {
+          const p = cat.Meses[m]?.P ?? 0;
+          const r = cat.Meses[m]?.R ?? 0;
+          const d = cat.Meses[m]?.D ?? (p - r);
+          return `<td style="text-align:right; padding:0.4rem 0.4rem; font-size:0.71rem;">${fmtMoney(p)}</td>
+                  <td style="text-align:right; padding:0.4rem 0.4rem; font-size:0.71rem;">${fmtMoney(r)}</td>
+                  <td style="text-align:right; padding:0.4rem 0.4rem; font-size:0.71rem;">${fmtDif(d)}</td>`;
+        }).join('');
+
+        const catTotalP = MESES.reduce((s,m) => s + (cat.Meses[m]?.P ?? 0), 0);
+        const catTotalR = MESES.reduce((s,m) => s + (cat.Meses[m]?.R ?? 0), 0);
+
+        bodyRows += `
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:0.4rem 0.75rem 0.4rem 1.5rem; font-size:0.75rem; color:var(--text-main); white-space:nowrap; position:sticky; left:0; background:var(--bg-paper); z-index:2; border-right:2px solid var(--border); min-width:180px; max-width:220px; overflow:hidden; text-overflow:ellipsis;">
+              ${cat.Nombre}
+            </td>
+            ${catCells}
+            <td style="text-align:right; padding:0.4rem 0.4rem; font-size:0.71rem;">${fmtMoney(catTotalP)}</td>
+            <td style="text-align:right; padding:0.4rem 0.4rem; font-size:0.71rem;">${fmtMoney(catTotalR)}</td>
+            <td style="text-align:right; padding:0.4rem 0.4rem; font-size:0.71rem;">${fmtDif(catTotalP - catTotalR)}</td>
+          </tr>`;
+      });
+    });
+  }
+
+  // ── Fila TOTAL global ──
+  const grandTotalCells = MESES.map(m => {
+    const p = grandTotal.P[m] || 0;
+    const r = grandTotal.R[m] || 0;
+    return `<td style="text-align:right; padding:0.6rem 0.4rem; font-size:0.75rem; font-weight:700;">${fmtMoney(p)}</td>
+            <td style="text-align:right; padding:0.6rem 0.4rem; font-size:0.75rem; font-weight:700;">${fmtMoney(r)}</td>
+            <td style="text-align:right; padding:0.6rem 0.4rem; font-size:0.75rem;">${fmtDif(p - r)}</td>`;
+  }).join('');
+  const gtP = MESES.reduce((s,m) => s + (grandTotal.P[m] || 0), 0);
+  const gtR = MESES.reduce((s,m) => s + (grandTotal.R[m] || 0), 0);
+
+  return `
+  <div class="view-container">
+    <!-- Cabecera -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+      <div>
+        <h2 style="font-family:var(--font-heading); font-size:1.75rem; font-weight:700;">Consolidado Anual</h2>
+        <p style="color:var(--text-muted);">Presupuesto vs. gasto real de todas las categorías por mes.</p>
+      </div>
+      <div style="display:flex; align-items:center; gap:0.75rem;">
+        <select id="select-annual-year" class="btn" style="width:auto; padding:0.5rem 1rem; font-size:0.9rem;" onchange="changeAnnualYear()">
+          ${[2023,2024,2025,2026,2027].map(y => `
+            <option value="${y}" ${state.selectedAnnualYear === y ? 'selected' : ''}>${y}</option>
+          `).join('')}
+        </select>
+        <button class="btn btn-primary" style="width:auto; padding:0.5rem 0.75rem;" onclick="fetchAnnualData()">
+          <i data-lucide="refresh-cw" style="width:16px;"></i>
+        </button>
+        <button class="btn btn-outline" style="width:auto; padding:0.5rem 1rem; display:flex; align-items:center; gap:0.5rem; border-color:var(--success); color:var(--success);" ${!report ? 'disabled' : ''} onclick="exportAnnualToExcel()">
+          <i data-lucide="download" style="width:16px;"></i> Excel
+        </button>
+      </div>
+    </div>
+
+    ${!report ? `
+      <div class="card" style="padding:4rem; text-align:center; color:var(--text-muted);">
+        <i data-lucide="bar-chart-3" style="width:48px; height:48px; opacity:0.3; margin-bottom:1rem;"></i>
+        <p>Cargando consolidado anual…</p>
+      </div>
+    ` : `
+    <!-- Leyenda -->
+    <div style="display:flex; gap:1.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+      <span style="font-size:0.75rem; color:var(--text-muted); display:flex; align-items:center; gap:0.4rem;">
+        <span style="display:inline-block; width:10px; height:10px; background:var(--primary); border-radius:2px;"></span> Presupuesto
+      </span>
+      <span style="font-size:0.75rem; color:var(--text-muted); display:flex; align-items:center; gap:0.4rem;">
+        <span style="display:inline-block; width:10px; height:10px; background:var(--secondary); border-radius:2px;"></span> Real
+      </span>
+      <span style="font-size:0.75rem; color:var(--text-muted); display:flex; align-items:center; gap:0.4rem;">
+        <span style="display:inline-block; width:10px; height:10px; background:var(--success); border-radius:2px;"></span> Diferencia (positivo = ahorro)
+      </span>
+    </div>
+
+    <!-- Tabla principal -->
+    <div class="card" style="padding:0; overflow:hidden;">
+      <div style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
+        <table style="width:max-content; min-width:100%; border-collapse:collapse; font-size:0.8rem;">
+          <thead>
+            <tr>
+              <th rowspan="2" style="text-align:left; padding:0.6rem 0.75rem; background:var(--bg-card); position:sticky; left:0; z-index:5; border-right:2px solid var(--border); border-bottom:1px solid var(--border); min-width:180px; font-size:0.75rem; text-transform:uppercase; color:var(--text-muted);">
+                Categoría
+              </th>
+              ${mesHeaders}
+              <th colspan="3" style="text-align:center; background:rgba(59,130,246,0.15); padding:0.5rem 0.25rem; font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--primary); border-bottom:2px solid var(--primary); white-space:nowrap;">
+                TOTAL ANUAL
+              </th>
+            </tr>
+            <tr>
+              ${subHeaders}
+              <th style="padding:0.35rem 0.4rem; font-size:0.62rem; color:var(--text-muted); text-transform:uppercase; text-align:right; background:rgba(59,130,246,0.1); white-space:nowrap;">Pres.</th>
+              <th style="padding:0.35rem 0.4rem; font-size:0.62rem; color:var(--text-muted); text-transform:uppercase; text-align:right; background:rgba(59,130,246,0.1); white-space:nowrap;">Real</th>
+              <th style="padding:0.35rem 0.4rem; font-size:0.62rem; color:var(--text-muted); text-transform:uppercase; text-align:right; background:rgba(59,130,246,0.1); white-space:nowrap;">Dif.</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${bodyRows}
+          </tbody>
+          <tfoot>
+            <tr style="background:var(--primary); color:white;">
+              <td style="padding:0.65rem 0.75rem; font-size:0.82rem; font-weight:700; text-transform:uppercase; position:sticky; left:0; background:var(--primary); z-index:2; border-right:2px solid rgba(255,255,255,0.2); white-space:nowrap;">
+                TOTAL GENERAL
+              </td>
+              ${grandTotalCells}
+              <td style="text-align:right; padding:0.6rem 0.4rem; font-size:0.75rem; font-weight:700;">${fmtMoney(gtP)}</td>
+              <td style="text-align:right; padding:0.6rem 0.4rem; font-size:0.75rem; font-weight:700;">${fmtMoney(gtR)}</td>
+              <td style="text-align:right; padding:0.6rem 0.4rem; font-size:0.75rem; font-weight:700;">${fmtDif(gtP - gtR)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+    `}
+  </div>
+`;
+};
+
+window.changeAnnualYear = () => {
+  state.selectedAnnualYear = parseInt(document.getElementById('select-annual-year').value);
+  state.data.annualData = null;
+  fetchAnnualData();
+};
+
+window.exportAnnualToExcel = () => {
+  const report = state.data.annualData;
+  if (!report) return;
+
+  const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const MESES  = [1,2,3,4,5,6,7,8,9,10,11,12];
+
+  // ── Cabeceras ──────────────────────────────────────────────────
+  const headerRow1 = ['Categoría'];
+  const headerRow2 = [''];
+  MESES.forEach(m => {
+    headerRow1.push(months[m-1], '', '');
+    headerRow2.push('Presupuesto', 'Real', 'Diferencia');
+  });
+  headerRow1.push('Total Anual', '', '');
+  headerRow2.push('Presupuesto', 'Real', 'Diferencia');
+
+  const totalCols = 1 + 12 * 3 + 3; // categoría + 12 meses×3 + total anual×3
+  const titleRow   = [`CONSOLIDADO DE PRESUPUESTO Y GASTOS MENSUAL - ${state.selectedAnnualYear}`];
+
+  const rows = [titleRow, headerRow1, headerRow2];
+  const grandTotal = { P:{}, R:{} };
+  MESES.forEach(m => { grandTotal.P[m] = 0; grandTotal.R[m] = 0; });
+
+  report.data.forEach(sec => {
+    // Fila de sección (totales)
+    const secRow = [sec.Nombre.toUpperCase()];
+    MESES.forEach(m => {
+      const p = sec.Totales[m]?.P ?? 0;
+      const r = sec.Totales[m]?.R ?? 0;
+      grandTotal.P[m] += p;
+      grandTotal.R[m] += r;
+      secRow.push(p, r, p - r);
+    });
+    const secTotP = MESES.reduce((s,m) => s + (sec.Totales[m]?.P ?? 0), 0);
+    const secTotR = MESES.reduce((s,m) => s + (sec.Totales[m]?.R ?? 0), 0);
+    secRow.push(secTotP, secTotR, secTotP - secTotR);
+    rows.push(secRow);
+
+    // Filas de subcategorías
+    sec.Categorias.forEach(cat => {
+      const catRow = ['  ' + cat.Nombre];
+      MESES.forEach(m => {
+        const p = cat.Meses[m]?.P ?? 0;
+        const r = cat.Meses[m]?.R ?? 0;
+        catRow.push(p, r, cat.Meses[m]?.D ?? (p - r));
+      });
+      const catTotP = MESES.reduce((s,m) => s + (cat.Meses[m]?.P ?? 0), 0);
+      const catTotR = MESES.reduce((s,m) => s + (cat.Meses[m]?.R ?? 0), 0);
+      catRow.push(catTotP, catTotR, catTotP - catTotR);
+      rows.push(catRow);
+    });
+  });
+
+  // Fila de totales globales
+  const totRow = ['TOTAL GENERAL'];
+  MESES.forEach(m => {
+    const p = grandTotal.P[m] || 0;
+    const r = grandTotal.R[m] || 0;
+    totRow.push(p, r, p - r);
+  });
+  const gtP = MESES.reduce((s,m) => s + (grandTotal.P[m] || 0), 0);
+  const gtR = MESES.reduce((s,m) => s + (grandTotal.R[m] || 0), 0);
+  totRow.push(gtP, gtR, gtP - gtR);
+  rows.push(totRow);
+
+  // ── Crear libro XLSX ───────────────────────────────────────────
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+
+  // Combinar celdas: fila título + cabeceras de mes (ahora en fila 1)
+  const merges = [
+    { s:{r:0,c:0}, e:{r:0,c:totalCols-1} }   // título span total
+  ];
+  let col = 1; // columna B en base 0
+  for (let i = 0; i < 12; i++) {
+    merges.push({ s:{r:1,c:col}, e:{r:1,c:col+2} }); // mes en fila 1
+    col += 3;
+  }
+  merges.push({ s:{r:1,c:col}, e:{r:1,c:col+2} }); // Total Anual
+  ws['!merges'] = merges;
+
+  // Anchos de columna
+  const wscols = [{ wch: 28 }]; // categoría
+  for (let i = 0; i < 13 * 3; i++) wscols.push({ wch: 13 });
+  ws['!cols'] = wscols;
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, `Consolidado ${state.selectedAnnualYear}`);
+  XLSX.writeFile(wb, `AuraFin_Consolidado_${state.selectedAnnualYear}.xlsx`);
+  showToast('Archivo Excel descargado', 'success');
+};
+
+const fetchAnnualData = async () => {
+  if (!state.token) return;
+  try {
+    const params = `?anio=${state.selectedAnnualYear}&mes_inicio=1&mes_fin=12`;
+    const result = await api.fetch(`/reportes/consolidado${params}`);
+    state.data.annualData = result.data || null;
+    render();
+  } catch (err) { console.error('fetchAnnualData:', err); }
+};
+
 const Modal = () => {
   if (!state.activeModal) return '';
 
@@ -1309,7 +1611,7 @@ const render = () => {
     app.innerHTML = AuthPage('register');
   } else if (path === '/recover') {
     app.innerHTML = AuthPage('recover');
-  } else if (['/dashboard', '/budget', '/expenses', '/profile'].includes(path)) {
+  } else if (['/dashboard', '/budget', '/expenses', '/profile', '/annual'].includes(path)) {
     if (!state.token) {
       navigate('/login');
       return;
@@ -1326,11 +1628,13 @@ const render = () => {
     if (path === '/budget') view = BudgetView();
     if (path === '/expenses') view = ExpensesView();
     if (path === '/profile') view = ProfileView();
+    if (path === '/annual') view = AnnualView();
 
     app.innerHTML = AppLayout(view);
 
     // Init specific logic (like Charts) after mounting
     if (path === '/dashboard') initDashboardCharts();
+    if (path === '/annual' && !state.data.annualData) fetchAnnualData();
   } else {
     app.innerHTML = `<div class="view-container" style="text-align:center; padding-top: 100px;">
       <h1 style="font-size: 4rem; color: var(--primary);">404</h1>
@@ -1344,7 +1648,7 @@ const render = () => {
     LayoutDashboard, Wallet, ReceiptText, User, LogOut, Menu, X, Plus, 
     ChevronRight, ChevronDown, Edit2, TrendingUp, TrendingDown, Bell, 
     Search, DollarSign, Calendar, PieChart, Save, Trash2, RefreshCw, 
-    Sun, Moon, Banknote, CreditCard, Scale, AlertTriangle, FolderPlus, Tag
+    Sun, Moon, Banknote, CreditCard, Scale, AlertTriangle, FolderPlus, Tag, BarChart3
   };
 
   setupEventListeners();
